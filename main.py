@@ -10,7 +10,8 @@ import jieba.posseg as pseg
 from pypinyin import pinyin, Style
 from curl_cffi.requests import AsyncSession
 
-from astrbot.api.all import *
+from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.star import Context, Star, register
 from astrbot.api.message_components import Image
 
 
@@ -61,7 +62,7 @@ class TrixiebooruPlugin(Star):
             if k not in self.config:
                 self.config[k] = v
 
-    @filter.on_message()
+    @filter.regex(r"^\s*,")
     async def handle_message(self, event: AstrMessageEvent):
         """主消息处理器"""
         message_str = event.message_str.strip()
