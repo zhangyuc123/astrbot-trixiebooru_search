@@ -1,0 +1,5 @@
+name: trixiebooru_search
+desc: 根据关键词从 TrixieBooru 搜索图片，支持多模式、安全过滤、智能翻译
+version: v1.0.0
+author: Developer
+repo: ""

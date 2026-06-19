@@ -1,0 +1,104 @@
+{
+  "flaresolverr_url": {
+    "description": "FlareSolverr 服务地址（绕过 Cloudflare）",
+    "type": "string",
+    "default": "",
+    "hint": "留空则使用 curl_cffi 指纹，填地址则通过 FlareSolverr 代理。"
+  },
+  "safe_mode_whitelist_groups": {
+    "description": "关闭安全模式的群聊 ID 列表",
+    "type": "list",
+    "default": [],
+    "hint": "群聊在此列表中则允许返回 questionable 图片。"
+  },
+  "safe_mode_whitelist_users": {
+    "description": "关闭安全模式的用户 ID 列表（仅私聊生效）",
+    "type": "list",
+    "default": [],
+    "hint": "用户在此列表中，私聊时允许返回 questionable 图片。"
+  },
+  "request_timeout": {
+    "description": "请求超时时间（秒）",
+    "type": "int",
+    "default": 30,
+    "hint": "单次 HTTP 请求等待响应的最长时间。"
+  },
+  "max_retries": {
+    "description": "最大重试次数",
+    "type": "int",
+    "default": 3,
+    "hint": "抓取失败后的重试次数。"
+  },
+  "explicit_keywords": {
+    "description": "始终拒绝的关键词",
+    "type": "list",
+    "default": ["sex", "porn", "explicit", "r18", "gore", "hentai"],
+    "hint": "命中这些关键词时，任何模式均拒绝输出。"
+  },
+  "questionable_keywords": {
+    "description": "安全模式下拒绝的关键词",
+    "type": "list",
+    "default": ["underwear", "swimsuit", "bikini", "suggestive", "暗示"],
+    "hint": "安全模式下命中这些关键词时拒绝输出。"
+  },
+  "stopwords": {
+    "description": "自然语言分词停用词",
+    "type": "list",
+    "default": ["来", "张", "图", "的", "了", "吧", "吗", "是"],
+    "hint": "jieba 分词后过滤掉这些无意义词。"
+  },
+  "hot_order_field": {
+    "description": "热度排序字段",
+    "type": "string",
+    "default": "score",
+    "hint": "可选 score 或 favorites_count。"
+  },
+  "time_range_days": {
+    "description": "「本周」等时间范围（天）",
+    "type": "int",
+    "default": 7,
+    "hint": "自然语言中「本周」等指示的时间回溯天数。"
+  },
+  "translation_mapping": {
+    "description": "本地中英映射表（优先级最高）",
+    "type": "dict",
+    "default": {"小蝶": "Fluttershy", "崔克茜": "Trixie"},
+    "hint": "键：中文名，值：英文标签。命中后直接返回，不调用翻译服务。"
+  },
+  "custom_translate_url": {
+    "description": "自定义翻译 API 完整 URL",
+    "type": "string",
+    "default": "",
+    "hint": "留空则使用 LLM 翻译。填写后则优先调用此 URL。例如：https://api.fanyi.baidu.com/api/trans/vip/translate"
+  },
+  "custom_translate_api_key": {
+    "description": "自定义翻译 API 密钥",
+    "type": "string",
+    "default": "",
+    "hint": "若需要，例如百度翻译的 appid。以 Authorization Bearer 方式发送。"
+  },
+  "custom_translate_extra_params": {
+    "description": "自定义翻译 API 额外固定参数",
+    "type": "dict",
+    "default": {},
+    "hint": "例如：{\"from\": \"zh\", \"to\": \"en\"}"
+  },
+  "custom_translate_result_path": {
+    "description": "自定义翻译 API 响应中提取结果的 JSONPath",
+    "type": "string",
+    "default": "trans_result[0].dst",
+    "hint": "例如百度翻译返回 {\"trans_result\": [{\"dst\": \"...\"}]}，路径为 trans_result[0].dst"
+  },
+  "enabled_groups": {
+    "description": "仅允许这些群使用插件（空列表=全部允许）",
+    "type": "list",
+    "default": [],
+    "hint": "仅在列表中的群才响应 , 命令。"
+  },
+  "enabled_users": {
+    "description": "仅允许这些用户使用插件（空列表=全部允许）",
+    "type": "list",
+    "default": [],
+    "hint": "仅在列表中的用户才响应 , 命令。"
+  }
+}
