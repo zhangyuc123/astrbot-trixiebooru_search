@@ -171,7 +171,7 @@
 
 ## 许可证
 
-[MIT License]()
+[MIT License](https://github.com/zhangyuc123/astrbot-trixiebooru_search/blob/main/LICENSE)
 ---
 数据来源：Trixiebooru
 插件平台：AstrBot
