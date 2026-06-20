@@ -1,14 +1,14 @@
 # TrixieBooru 图片搜索插件
 
-> 基于 AstrBot 的图片搜索插件，从 [TrixieBooru](https://trixiebooru.org/) 网站按标签搜索并返回图片。支持多关键词、自然语言分词、热度/时间筛选、安全模式，翻译服务支持本地映射表、自定义 API、LLM 和拼音降级。
+> 基于 AstrBot 的图片搜索插件，从 [TrixieBooru](https://trixiebooru.org/) 网站按标签搜索并返回图片。支持中文自然语言输入、LLM 全量分词翻译、自动学习映射、图片去重、安全过滤等多种功能。
 
 ---
 
-## 📦 插件基本信息
+## 插件基本信息
 
 - **插件名称**：`trixiebooru_search`
-- **描述**：根据用户输入的关键词（以英文逗号开头）从 TrixieBooru 网站搜索并返回匹配的图片，支持多标签查询、热度排序、时间过滤和安全模式控制；翻译服务支持本地映射表、自定义 API、LLM 及拼音降级。
-- **版本**：1.0.0
+- **描述**：以逗号 `,` 或 `，` 开头触发，从 TrixieBooru 搜索并返回图片。支持中文自然语言自动提取关键词并翻译，支持英文标签直接查询，可搭配 `-hot`、`-gif`、`-infinite`、`-tag`、`-debug` 等参数。翻译服务使用 LLM 一次性完成分词、有效词翻译与无效词判定，结果自动学习保存。
+- **版本**：v3.4.0
 - **作者**：octony
 - **平台适配**：aiocqhttp（AstrBot）
 
@@ -17,135 +17,161 @@
 ## ✨ 功能特性
 
 ### 1. 触发方式
-- 仅当消息**以英文逗号 `,` 为首字符**时触发（忽略前导空格），避免误触发。
-- 示例：`,小蝶,夕阳` 或 `,来张小蝶这周最火的图`
+- 仅当消息**以英文逗号 `,` 或中文逗号 `，` 开头**时触发（忽略前导空格）。
+- 示例：`,小蝶` 或 `，来张瑞瑞美图`
 
-### 2. 三种查询模式
+### 2. 查询模式与参数
 
-| 模式 | 输入示例 | 说明 |
-|------|----------|------|
-| **模式一：显式分隔** | `,小蝶,夕阳,花坛` | 用逗号分隔多个关键词，全部翻译后以 **AND** 关系查询，随机返回一张图片。 |
-| **模式二：自然语言（随机）** | `,来张小蝶美图` | 使用 jieba 分词自动提取关键词（名词/动词/形容词），过滤语气词和停用词，随机返回一张图片。 |
-| **模式三：自然语言（热度/时间）** | `,来张小蝶这周最火的图` | 识别“本周”“最近”等时间词和“最火”“热度最高”等排序词，返回筛选时间段内热度最高的一张图片。 |
+| 模式 | 说明 | 示例 |
+|------|------|------|
+| **自然语言搜索** | 输入中文句子，LLM 自动完成分词、翻译与无效词过滤，翻译后以 AND 关系查询。 | `,来张云宝帅图` |
+| **逗号分隔多标签** | 用中英文逗号分隔多个标签（中英文混用），LLM 统一处理整段原文。 | `,小蝶,夕阳,solo` |
+| **纯英文标签** | 不含中文的输入原样作为标签，不经过任何翻译。 | `,fluttershy,solo` |
+| **直传标签** `-tag` | 不进行任何分词和翻译，直接将输入作为原始标签查询。 | `,oc:柒染 -tag` |
+| **热度优先** `-hot` | 返回指定时间范围内点赞量最高的第一张图片。 | `,云宝 -hot` |
+| **动图限定** `-gif` | 只搜索动图（animated）。 | `,pinkie pie -gif` |
+| **取消时间限制** `-infinite` | 取消默认 60 天的时间过滤，搜索全站历史图片。 | `,暮光闪闪 -infinite` |
+| **调试模式** `-debug` | 额外输出每个标签在图站的图片总数，方便判断标签有效性。 | `,瑞瑞,浴室 -debug` |
 
-### 3. 翻译服务（优先级从高到低）
-- **本地映射表**：内置常见角色名映射（如 `"小蝶" → "Fluttershy"`），可 Web 配置扩展，速度最快。
-- **自定义翻译 API**：可配置任意翻译 API（如百度翻译、腾讯翻译等），支持自定义请求参数和响应提取路径。
-- **LLM 翻译**：若未配置自定义 API，自动使用 AstrBot 当前配置的大语言模型进行翻译。
-- **拼音降级**：若所有翻译方式均失败，使用 `pypinyin` 转为拼音，确保可用性。
+> 以上参数可自由组合，如 `,小蝶 -hot -gif -infinite`。
 
-### 4. 安全模式（严格分级）
-- **内容分级**：
-  - `safe`：完全安全
-  - `questionable`：轻微暗示
-  - `explicit`：明显色情
-- **全局禁止**：任何情况下，**绝不返回 `explicit` 级别的图片**。
-- **默认安全模式**：所有群聊和用户默认处于安全模式，仅返回 `safe` 图片。
+### 3. LLM 全量分析
+- 当输入含中文且 jieba 分词后存在未命中本地词典的词时，自动调用 LLM 对**整段原文**进行一次性处理：
+  - **分词**（`tokens`）：提取有效搜索词
+  - **翻译**（`mappings`）：将有效词翻译为英文标签
+  - **无效词判定**（`invalid`）：识别"来张"、"给我"等冗余词
+- LLM 要求**只有逗号是分隔符**，空格等符号不算分隔，避免错误拆分。
+- 翻译结果在**图片成功输出后**自动写入本地词典（jieba 分词词典、用户映射 `user_mapping.json`、停用词 `custom_stopwords.json`），下次直接命中。
+- LLM 调用使用 30 秒超时，失败时自动回退拼音降级，不会阻塞服务器。
+
+### 4. 图片去重与大小限制
+- **大小限制**：仅返回 ≤ 1MB 的图片，过大自动跳过，尝试下一张。
+- **12 小时去重**：已输出的图片 ID 12 小时内不会重复输出，若所有候选均重复，第 6 次会强制输出。
+- 候选图片最多尝试 10 张，全部不符合时提示用户。
+
+### 5. 安全模式
+
+- **内容分级**：TrixieBooru 图片分为 `safe`（安全）、`questionable`（轻微暗示）、`suggestive`（挑逗）、`explicit`（明显色情）。
+- **默认安全**：所有群聊/用户默认为安全模式，自动附加 `-explicit -questionable -suggestive`，仅返回 `safe` 图片。
 - **白名单控制**：
-  - 可分别配置群聊 ID 和用户 ID 白名单，关闭安全模式（允许返回 `questionable`）。
-  - **优先级**：群聊白名单 **覆盖** 用户白名单。若群聊关闭安全模式，群内所有用户均不受限；若群聊未关闭，即使某用户个人白名单，在群内也受限制。
-- **关键词黑名单**：
-  - `explicit` 黑名单（如 `sex`、`porn`、`explicit`）全局生效，命中即拒绝。
-  - `questionable` 黑名单（如 `underwear`、`swimsuit`）仅在安全模式下拒绝，关闭后允许搜索。
+  - `suggestive_whitelist`：列表中的群/用户仅过滤 explicit，允许 questionable/suggestive。
+  - `all_whitelist`：列表中的群/用户不过滤任何内容（优先级最高）。
+  - 私聊使用用户 ID 判断，群聊使用群聊 ID 判断。
+- **explicit_keywords**：可配置拒绝的关键词列表，仅在非 `all` 模式下生效。
+
+### 6. 并发限制
+- 最多同时处理 2 个搜索任务，超出时回复"搜索任务繁忙，请稍后再试～"。
 
 ---
 
-## 🚀 安装与配置
+## 安装与配置
 
 ### 依赖
 - Python 3.8+
-- AstrBot 框架（支持 aiocqhttp）
-- 依赖库：`jieba`, `pypinyin`, `requests`, `cloudscraper`（或 `flaresolverr` 客户端）
+- AstrBot 框架
+- 依赖库：`jieba`, `pypinyin`, `curl_cffi`
 
 ### 安装步骤
-1. 将插件文件夹放置于 AstrBot 的 `plugins` 目录下。
-2. 在 `requirements.txt` 中列出所有依赖。
-3. 在 AstrBot Web 管理界面中启用插件。
-4. 配置以下参数（支持 Web 界面动态修改，无需重启）。
+1. 将插件文件夹放置于 AstrBot 的 `addons/plugins/` 目录下。
+2. 安装依赖：
+   ```bash
+   pip install jieba pypinyin curl_cffi
+   ```
+3. 在 AstrBot Web 管理界面启用插件（或重启机器人）。
 
 ### 配置项说明
+以下配置可在 `config.json` 中修改。
 
-| 配置项 | 类型 | 说明 | 默认值 |
-|--------|------|------|--------|
-| `flaresolverr_url` | string | FlareSolverr 服务地址（绕过 Cloudflare） | `"http://localhost:8191/v1"` |
-| `safe_mode_whitelist_groups` | list[int] | 关闭安全模式的群聊 ID 列表 | `[]` |
-| `safe_mode_whitelist_users` | list[int] | 关闭安全模式的用户 ID 列表（仅私聊生效） | `[]` |
-| `request_timeout` | int | 请求超时（秒） | `30` |
-| `max_retries` | int | 最大重试次数 | `3` |
-| `explicit_keywords` | list[str] | 始终拒绝的关键词（中英） | `["sex","porn","explicit","r18","gore","hentai"]` |
-| `questionable_keywords` | list[str] | 安全模式下拒绝的关键词 | `["underwear","swimsuit","bikini","suggestive","暗示"]` |
-| `stopwords` | list[str] | 自然语言分词停用词 | `["来","张","图","的","了","吧","吗","是"]` |
-| `hot_order_field` | string | 热度排序字段（如 `score` 或 `favorites_count`） | `"score"` |
-| `time_range_days` | int | “本周”等时间范围（天） | `7` |
-| **翻译相关** | | | |
-| `translation_mapping` | dict | 本地中英映射表 | `{"小蝶":"Fluttershy","崔克茜":"Trixie"}` |
-| `custom_translate_url` | string | 自定义翻译 API 完整 URL | `""`（空则使用 LLM） |
-| `custom_translate_api_key` | string | 自定义翻译 API 密钥 | `""` |
-| `custom_translate_extra_params` | dict | 额外固定参数（如 `{"from":"zh","to":"en"}`） | `{}` |
-
----
-
-## 🧩 使用示例
-
-### 示例 1：显式分隔多标签
-用户：,小蝶,夕阳,花坛
-机器人：（随机返回一张同时包含 Fluttershy、sunset、flower 的图片）
-### 示例 2：自然语言随机
-用户：,来张小蝶美图
-机器人：（分词提取“小蝶”、“美”，随机返回一张图片）
-### 示例 3：本周最热
-用户：,来张小蝶这周最火的图
-机器人：（提取“小蝶”，时间限定本周，按热度排序取第一张）
-### 示例 4：安全模式拦截
-用户：,sex
-机器人：（由于命中 explicit 黑名单，拒绝并提示）
----
-
-## 🔒 安全模式详解
-
-- **默认安全**：所有群/用户初始为安全模式，仅返回 `safe` 图片。
-- **关闭方式**：将群聊 ID 或用户 ID 加入 `safe_mode_whitelist_groups` / `safe_mode_whitelist_users`。
-- **优先级逻辑**：
-  - 若群聊在白名单 → 全群关闭安全模式（允许 `questionable`）。
-  - 若群聊不在白名单 → 即使某用户在白名单，该用户在群内仍受限制（群聊覆盖用户）。
-  - 私聊时：仅判断用户 ID 白名单。
-- **内容过滤**：
-  - `explicit` 级别图片以及黑名单关键词在任何模式下均被禁止。
-  - `questionable` 级别仅安全模式被屏蔽，关闭后允许。
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `api_key` | string | `""` | Trixiebooru API Key（可选，提升访问额度） |
+| `local_translation_dict` | dict | 见源码 | 内置中→英映射表（角色/场景/动作等） |
+| `stopwords` | list | 见源码 | 停用词列表，插件会自动追加 LLM 判定的无效词 |
+| `tag_min_count` | int | 50 | 标签最少图片数量，低于此值的标签被过滤 |
+| `time_range_days` | int | 60 | 默认时间范围（天），-infinite 可覆盖 |
+| `request_timeout` | int | 30 | HTTP 请求超时（秒） |
+| `max_tags_per_query` | int | 3 | 一次搜索最多使用的标签数（超出将截断） |
+| `enable_llm_translate` | bool | true | 是否启用 LLM 全量翻译与无效词判定 |
+| `enable_pinyin_fallback` | bool | true | LLM 失败后是否使用拼音降级 |
+| `suggestive_whitelist` | list | `[]` | 暗示模式白名单（用户/群聊 ID） |
+| `all_whitelist` | list | `[]` | 所有模式白名单（用户/群聊 ID） |
+| `explicit_keywords` | list | `[]` | 全局拒绝的关键词列表 |
+| `flaresolverr_url` | string | `""` | FlareSolverr 地址，用于绕过 Cloudflare |
+| `mlp_dict_file` | string | `"mlp_dict.txt"` | jieba 自定义分词词典路径 |
 
 ---
 
-## 🌐 翻译服务配置指南
+## 使用示例
 
-### 1. 本地映射表（推荐）
-在配置 `translation_mapping` 中添加键值对，例如 `"暮光闪闪":"Twilight Sparkle"`，命中后直接使用，无需网络。
+### 示例 1：自然语言搜索
+用户：`,来张云宝`
 
-### 2. 自定义翻译 API
-- 填写 `custom_translate_url` 和 `custom_translate_api_key`（若需要）。
-- 可在 `custom_translate_extra_params` 中固定参数（如 `from`、`to`）。
-- 插件会以 POST JSON 格式发送 `{"text": "中文", ...}`，并尝试从响应中提取 `trans_result[0].dst` 或 `target_text` 等常见字段。若您的 API 返回结构不同，可通过调整代码适配。
+机器人：LLM 分词提取"云宝" → Rainbow Dash，返回一张图。
 
-### 3. LLM 翻译（默认）
-若未配置自定义 API，则自动调用 AstrBot 当前的 LLM，发送提示词 `“请将以下中文翻译为英文，只输出翻译结果……”`，取返回文本。
+### 示例 2：逗号分隔多标签
+用户：`,小蝶,夕阳,solo`
 
-### 4. 拼音降级
-若以上均失败，使用 `pypinyin` 转为拼音（如 `"xiao_die"`），并记录警告日志。
+机器人：LLM 分析整段原文，三个标签 AND 查询，随机返回一张图。
+
+### 示例 3：参数组合
+用户：`,暮光闪闪 -hot -infinite`
+
+机器人：搜索全站 Twilight Sparkle 图片，返回点赞最高的一张。
+
+### 示例 4：直传复杂标签
+用户：`,oc:peakveil mist, solo -tag`
+
+机器人：直接以 oc:peakveil mist 和 solo 作为标签查询，不翻译。
+
+### 示例 5：调试模式
+用户：`,瑞瑞,浴室 -debug`
+
+机器人：返回图片的同时，附加消息显示每个标签的图片总数。
 
 ---
 
-## 📝 日志与调试
-- 每次请求会记录：群聊/用户 ID、关键词、翻译来源、安全模式状态、查询结果数量。
-- 日志使用 `astrbot.api.logger` 输出，可在 Web 管理界面查看。
+## 工作原理
+
+1. **输入解析**：去除逗号前缀，识别并提取参数（-hot、-gif、-tag、-infinite、-debug）。
+
+2. **分词预检**：纯英文输入直接作为标签；含中文时先用 jieba 分词，判断候选词数量（>10 拒绝）和是否全部命中本地映射。
+
+3. **LLM 全量分析**：若存在未命中词，调用 LLM 对整段原文进行分词、翻译、无效词判定。LLM 失败则回退拼音降级。
+
+4. **标签验证**：逐一查询每个标签的图片总数，剔除数量低于 tag_min_count 的冷门标签。
+
+5. **安全过滤**：根据安全级别决定是否附加 -explicit -questionable -suggestive。
+
+6. **图片获取**：构建查询，从 API 结果中按规则选择候选图片（大小 ≤ 1MB、未在 12 小时内输出过），下载后返回。
+
+7. **自动学习**：图片成功输出后，LLM 的分词结果、翻译映射、无效词分别写入 jieba 词典、user_mapping.json、custom_stopwords.json。
+
+---
+
+## 相关文件
+
+- `config.json` – 插件主配置
+- `user_mapping.json` – LLM 学习的映射（自动生成/更新）
+- `custom_stopwords.json` – LLM 学习的停用词（自动生成/更新）
+- `hot_tags_cache.json` – 热门标签缓存（自动刷新）
+- `mlp_dict.txt` – jieba 自定义分词词典（可手动维护）
 
 ---
 
 ## ⚠️ 注意事项
-- **Cloudflare 防护**：必须配置 FlareSolverr 或使用 cloudscraper 等方案，否则无法访问网站。
-- **翻译 API 密钥**：请勿硬编码，所有敏感信息从 Web 配置读取。
-- **请求频率**：建议在代码中添加随机延迟，避免对目标服务器造成压力。
-- **仅供学习**：本插件仅用于学习 Python 爬虫和 AstrBot 开发，请勿用于商业或恶意用途。
+
+- **LLM 依赖**：翻译功能依赖 AstrBot 当前配置的大语言模型，若未配置则直接使用拼音降级。
+- **Cloudflare 防护**：Trixiebooru 可能开启 Cloudflare 保护，若直连失败，请配置 flaresolverr_url 进行穿透。
+- **请求频率**：短时间大量查询可能触发 429 限流，插件已内置自动重试，但仍建议合理使用。
+- **词典维护**：建议将常用角色昵称（如"小呆"、"书记"）添加到 mlp_dict.txt 或本地映射中，以提升分词准确率。
+- **图片大小**：插件限制返回 ≤ 1MB 的图片，若全部候选均过大，会提示用户。
+- **仅供学习交流**：本插件仅用于学习 Python 爬虫与 AstrBot 插件开发，请勿用于商业或违规用途。
 
 ---
 
-## 📄 许可证
-（开发者自行选择，如 MIT、GPL 等）
+## 许可证
+
+MIT License
+
+数据来源：Trixiebooru
+插件平台：AstrBot
