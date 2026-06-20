@@ -62,7 +62,7 @@
   "tag_min_count": {
     "description": "标签有效的最小图片数量阈值",
     "type": "int",
-    "default": 50,
+    "default": 5,
     "hint": "低于此值的关键词将被过滤。"
   },
   "stopwords": {
