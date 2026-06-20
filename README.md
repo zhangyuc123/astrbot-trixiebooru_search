@@ -87,8 +87,8 @@
 | `api_key` | string | `""` | Trixiebooru API Key（可选，提升访问额度） |
 | `local_translation_dict` | dict | 见源码 | 内置中→英映射表（角色/场景/动作等） |
 | `stopwords` | list | 见源码 | 停用词列表，插件会自动追加 LLM 判定的无效词 |
-| `tag_min_count` | int | 50 | 标签最少图片数量，低于此值的标签被过滤 |
-| `time_range_days` | int | 60 | 默认时间范围（天），-infinite 可覆盖 |
+| `tag_min_count` | int | 5 | 标签最少图片数量，低于此值的标签被过滤 |
+| `time_range_days` | int | 360 | 默认时间范围（天），-infinite 可覆盖 |
 | `request_timeout` | int | 30 | HTTP 请求超时（秒） |
 | `max_tags_per_query` | int | 3 | 一次搜索最多使用的标签数（超出将截断） |
 | `enable_llm_translate` | bool | true | 是否启用 LLM 全量翻译与无效词判定 |
