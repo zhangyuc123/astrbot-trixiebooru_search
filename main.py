@@ -341,84 +341,109 @@ class TrixiebooruPlugin(Star):
         if invalid:
             self._add_stopwords(invalid)
 
-    # ---------- 简化后的 _extract_tags ----------
     async def _extract_tags(self, content: str) -> Tuple[List[str], List[str], str, Dict[str, str]]:
         clean_content = content.strip()
         logger.info(f"[提取标签] 输入: {clean_content}")
         if not clean_content:
             return [], [], 'empty', {}
 
-        # 纯英文（无中文）直接作为标签
-        if not re.search(r'[\u4e00-\u9fa5]', clean_content):
-            logger.info(f"[提取标签] 纯英文模式，整体作为标签: [{clean_content}]")
-            self._pending_llm_data = None
-            return [clean_content], [clean_content], 'explicit', {}
+        # ===== 统一先按逗号分割，再逐个片段处理 =====
+        segments = re.split(r'[，,]+', clean_content)
+        segments = [s.strip() for s in segments if s.strip()]
+        logger.info(f"[提取标签] 逗号分隔片段: {segments}")
 
-        # 含中文：先 jieba 分词
-        candidates = await asyncio.to_thread(self._parse_natural_language, clean_content)
-        logger.info(f"[提取标签] jieba 候选词: {candidates}")
+        all_cn_candidates = []
+        all_en_candidates = []
+        final_cn = []
+        final_en = []
+        pending_llm_data = None
 
-        if len(candidates) > 10:
-            logger.info(f"[提取标签] 候选词数量 {len(candidates)} 超过阈值，视为无效输入")
-            self._pending_llm_data = None
-            return [], [], 'too_many', {}
-
-        # 构建本地映射表
-        raw_local_dict = self.config.get("local_translation_dict", {})
-        if isinstance(raw_local_dict, str):
-            try:
-                local_mapping = json.loads(raw_local_dict)
-            except Exception:
-                local_mapping = {}
-        else:
-            local_mapping = dict(raw_local_dict) if raw_local_dict else {}
-        if self.config.get("enable_user_mapping", True):
-            local_mapping.update(self._user_mapping)
-
-        # 检查是否有未命中本地词典的中文词
-        has_unmatched = False
-        for w in candidates:
-            if re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_\-:./ ]*', w) and not re.search(r'[\u4e00-\u9fa5]', w):
-                continue  # 英文词不算未命中
-            if w not in local_mapping:
-                has_unmatched = True
-                break
-
-        if has_unmatched and self.config.get("enable_llm_translate", True):
-            # 调用 LLM 全量分析
-            llm_result = await self._llm_analyze_full(clean_content)
-            if llm_result is not None:
-                tokens, mappings, invalid = llm_result
-                # 过滤无效词
-                final_cn = [t for t in tokens if t not in invalid]
-                eng_tags = [mappings.get(t, t) for t in final_cn]  # 未翻译的 token 保留原文
-                # 暂存数据，等待图片下载成功后持久化
-                self._pending_llm_data = (tokens, mappings, invalid)
-                logger.info(f"[LLM全量分析] 成功，tokens={tokens}, mappings={mappings}, invalid={invalid}")
-                return final_cn, eng_tags, 'llm_full', {}
-
-        # 若 LLM 未启用或失败，使用本地映射 + 拼音降级
-        self._pending_llm_data = None
-        en_candidates = [w for w in candidates if re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_\-:./ ]*', w) and not re.search(r'[\u4e00-\u9fa5]', w)]
-        cn_candidates = [w for w in candidates if w not in en_candidates]
-
-        matched_cn = []
-        matched_en = []
-        for word in cn_candidates:
-            if word in local_mapping:
-                matched_cn.append(word)
-                matched_en.append(local_mapping[word])
+        for seg in segments:
+            # 纯英文片段（无中文字符）：直接作为英文标签
+            if not re.search(r'[\u4e00-\u9fa5]', seg):
+                all_en_candidates.append(seg)
+                logger.info(f"[提取标签] 英文标签片段: {seg}")
             else:
-                # 拼音降级
-                pinyin_list = pinyin(word, style=Style.NORMAL)
-                pinyin_res = ''.join([p[0].capitalize() for p in pinyin_list])
-                pinyin_tag = pinyin_res if pinyin_res else word
-                matched_en.append(pinyin_tag)
-                logger.info(f"  拼音兜底: {word} -> {pinyin_tag}")
+                # 含中文片段：进入分析流程
+                # 先用 jieba 分词获取候选词
+                candidates = await asyncio.to_thread(self._parse_natural_language, seg)
+                logger.info(f"[提取标签] 中文片段 jieba 候选词: {candidates}")
 
-        final_cn = matched_cn + en_candidates
-        final_en = matched_en + en_candidates
-        return final_cn, final_en, 'fallback', {}
+                if len(candidates) > 10:
+                    logger.info(f"[提取标签] 片段 '{seg}' 候选词数 {len(candidates)} > 10，视为无效")
+                    # 整个片段无效，跳过
+                    continue
+
+                # 构建当前可用映射
+                raw_local_dict = self.config.get("local_translation_dict", {})
+                if isinstance(raw_local_dict, str):
+                    try:
+                        local_mapping = json.loads(raw_local_dict)
+                    except Exception:
+                        local_mapping = {}
+                else:
+                    local_mapping = dict(raw_local_dict) if raw_local_dict else {}
+                if self.config.get("enable_user_mapping", True):
+                    local_mapping.update(self._user_mapping)
+
+                # 检查是否有未命中本地词典的中文词
+                has_unmatched = False
+                for w in candidates:
+                    if re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_\-:./ ]*', w) and not re.search(r'[\u4e00-\u9fa5]', w):
+                        continue
+                    if w not in local_mapping:
+                        has_unmatched = True
+                        break
+
+                if has_unmatched and self.config.get("enable_llm_translate", True):
+                    # 调用 LLM 全量分析（只针对当前片段）
+                    llm_result = await self._llm_analyze_full(seg)
+                    if llm_result is not None:
+                        tokens, mappings, invalid = llm_result
+                        # 过滤无效词，有效词添加到结果
+                        valid_tokens = [t for t in tokens if t not in invalid]
+                        eng_tags = [mappings.get(t, t) for t in valid_tokens]
+                        final_cn.extend(valid_tokens)
+                        final_en.extend(eng_tags)
+                        # 暂存 LLM 数据（多个片段可能都有，但只保留最后一个？这里简化处理，只保留最后一个片段的 LLM 数据）
+                        # 更好的做法是合并，但考虑到通常只有一个片段含中文，暂用最后一个覆盖
+                        pending_llm_data = (tokens, mappings, invalid)
+                        logger.info(f"[LLM全量分析] 片段 '{seg}' 成功，tokens={tokens}, mappings={mappings}, invalid={invalid}")
+                        continue
+
+                # LLM 未启用或失败，使用本地映射 + 拼音降级
+                en_candidates = [w for w in candidates if re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_\-:./ ]*', w) and not re.search(r'[\u4e00-\u9fa5]', w)]
+                cn_candidates = [w for w in candidates if w not in en_candidates]
+
+                matched_cn = []
+                matched_en = []
+                for word in cn_candidates:
+                    if word in local_mapping:
+                        matched_cn.append(word)
+                        matched_en.append(local_mapping[word])
+                    else:
+                        if self.config.get("enable_pinyin_fallback", True):
+                            pinyin_list = pinyin(word, style=Style.NORMAL)
+                            pinyin_res = ''.join([p[0].capitalize() for p in pinyin_list])
+                            pinyin_tag = pinyin_res if pinyin_res else word
+                            matched_en.append(pinyin_tag)
+                            logger.info(f"  拼音兜底: {word} -> {pinyin_tag}")
+                final_cn.extend(matched_cn + en_candidates)
+                final_en.extend(matched_en + en_candidates)
+
+        # 合并英文片段
+        final_cn = final_cn + all_en_candidates
+        final_en = final_en + all_en_candidates
+
+        # 设置暂存数据（只保留最后一个 LLM 分析片段的）
+        self._pending_llm_data = pending_llm_data
+
+        if not final_en:
+            logger.info("[提取标签] 最终未得到任何英文标签")
+            return [], [], 'empty', {}
+
+        source = 'llm_full' if pending_llm_data else 'mixed'
+        return final_cn, final_en, source, {}
 
     def _parse_natural_language(self, content: str) -> List[str]:
         words = pseg.cut(content)
@@ -859,7 +884,7 @@ class TrixiebooruPlugin(Star):
             "   -gif      只返回动图\n"
             "   -tag     直接使用原标签，不翻译\n"
             "   -infinite 取消时间限制\n"
-            "    -debug    增加调试输出\n"
+            "    -debug    调试模式\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "🔗 数据源：https://trixiebooru.org/"
         )
