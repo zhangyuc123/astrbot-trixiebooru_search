@@ -859,6 +859,7 @@ class TrixiebooruPlugin(Star):
             "   -gif      只返回动图\n"
             "   -tag     直接使用原标签，不翻译\n"
             "   -infinite 取消时间限制\n"
+            "    -debug    增加调试输出\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "🔗 数据源：https://trixiebooru.org/"
         )
