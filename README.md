@@ -172,6 +172,6 @@
 ## 许可证
 
 MIT License
-
+---
 数据来源：Trixiebooru
 插件平台：AstrBot
