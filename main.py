@@ -514,7 +514,7 @@ class TrixiebooruPlugin(Star):
         params = {
             "q": ",".join(query_parts),
             "per_page": 100,
-            "sf": "favorites_count",
+            "sf": "wilson_score",   # 唯一修改：改为按 Wilson score 降序排列
             "sd": "desc",
             "key": self.config.get("api_key", "").strip()
         }
@@ -884,7 +884,7 @@ class TrixiebooruPlugin(Star):
             "   -gif      只返回动图\n"
             "   -tag     直接使用原标签，不翻译\n"
             "   -infinite 取消时间限制\n"
-            "    -debug    调试模式\n"
+            "   -debug    显示调试信息\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "🔗 数据源：https://trixiebooru.org/"
         )
